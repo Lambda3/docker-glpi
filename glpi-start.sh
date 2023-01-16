@@ -6,8 +6,7 @@
 
 if [[ -z "${TIMEZONE}" ]]; then echo "TIMEZONE is unset"; 
 else 
-echo "date.timezone = \"$TIMEZONE\"" > /etc/php/7.4/apache2/conf.d/timezone.ini;
-echo "date.timezone = \"$TIMEZONE\"" > /etc/php/7.4/cli/conf.d/timezone.ini;
+echo "date.timezone = \"$TIMEZONE\"" > /usr/local/etc/php/conf.d/timezone.ini;
 fi
 
 SRC_GLPI=$(curl -s https://api.github.com/repos/glpi-project/glpi/releases/tags/${VERSION_GLPI} | jq .assets[0].browser_download_url | tr -d \")
@@ -15,17 +14,48 @@ TAR_GLPI=$(basename ${SRC_GLPI})
 FOLDER_GLPI=glpi/
 FOLDER_WEB=/var/www/html/
 
-#check if TLS_REQCERT is present
-if !(grep -q "TLS_REQCERT" /etc/ldap/ldap.conf)
-then
-	echo "TLS_REQCERT isn't present"
-    echo -e "TLS_REQCERT\tnever" >> /etc/ldap/ldap.conf
-fi
-
 #Téléchargement et extraction des sources de GLPI
 if [ "$(ls ${FOLDER_WEB}${FOLDER_GLPI})" ];
 then
 	echo "GLPI is already installed"
+	VERSION_INSTALLED=`${FOLDER_WEB}${FOLDER_GLPI}/bin/console -V | cut -d ' ' -f 3`
+	MAIN_VERSION=`echo ${VERSION_INSTALLED} | cut -d ' ' -f 3 | cut -d '.' -f 1`
+	MINOR_VERSION1=`echo ${VERSION_INSTALLED} | cut -d ' ' -f 3 | cut -d '.' -f 2`
+	MINOR_VERSION2=`echo ${VERSION_INSTALLED} | cut -d ' ' -f 3 | cut -d '.' -f 3`
+
+	if [ "$(echo $VERSION_GLPI | cut -d '.' -f 1)" -gt $MAIN_VERSION ]; 
+	then 
+		echo "Version Installed: $VERSION_INSTALLED New version $VERSION_GLPI"
+		wget -P ${FOLDER_WEB} ${SRC_GLPI}
+		tar -xzf ${FOLDER_WEB}${TAR_GLPI} -C ${FOLDER_WEB}
+		rm -Rf ${FOLDER_WEB}${TAR_GLPI}
+		chown -R www-data:www-data ${FOLDER_WEB}${FOLDER_GLPI}
+		$FOLDER_WEB/$FOLDER_GLPI/bin/console db:update
+	else
+		if [ "$(echo $VERSION_GLPI | cut -d '.' -f 1)" -eq $MAIN_VERSION ] && [ "$(echo $VERSION_GLPI | cut -d '.' -f 2)" -gt $MINOR_VERSION1 ];
+		then
+			echo "Version Installed: $VERSION_INSTALLED New version $VERSION_GLPI"
+			wget -P ${FOLDER_WEB} ${SRC_GLPI}
+			tar -xzf ${FOLDER_WEB}${TAR_GLPI} -C ${FOLDER_WEB}
+			rm -Rf ${FOLDER_WEB}${TAR_GLPI}
+			chown -R www-data:www-data ${FOLDER_WEB}${FOLDER_GLPI}
+			$FOLDER_WEB/$FOLDER_GLPI/bin/console db:update
+		else
+			if [ "$(echo $VERSION_GLPI | cut -d '.' -f 1)" -eq $MAIN_VERSION ] && [ "$(echo $VERSION_GLPI | cut -d '.' -f 2)" -eq $MINOR_VERSION1 ] && [ "$(echo $VERSION_GLPI | cut -d '.' -f 3)" -gt $MINOR_VERSION2 ];
+			then
+				echo "Version Installed: $VERSION_INSTALLED New version $VERSION_GLPI"
+				wget -P ${FOLDER_WEB} ${SRC_GLPI}
+				tar -xzf ${FOLDER_WEB}${TAR_GLPI} -C ${FOLDER_WEB}
+				rm -Rf ${FOLDER_WEB}${TAR_GLPI}
+				chown -R www-data:www-data ${FOLDER_WEB}${FOLDER_GLPI}
+				$FOLDER_WEB/$FOLDER_GLPI/bin/console db:update
+			else
+				echo "Version Installed: $VERSION_INSTALLED Version Informed $VERSION_GLPI"
+			fi
+		fi
+	fi
+	echo "Removing $FOLDER_WEB/$FOLDER_GLPI/install/install.php"
+	rm -rf "$FOLDER_WEB/$FOLDER_GLPI/install/install.php"
 else
 	wget -P ${FOLDER_WEB} ${SRC_GLPI}
 	tar -xzf ${FOLDER_WEB}${TAR_GLPI} -C ${FOLDER_WEB}
@@ -45,4 +75,5 @@ service cron start
 a2enmod rewrite && service apache2 restart && service apache2 stop
 
 #Lancement du service apache au premier plan
-/usr/sbin/apache2ctl -D FOREGROUND
+#/usr/sbin/apache2ctl -D FOREGROUND
+apache2-foreground
