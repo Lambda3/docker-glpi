@@ -8,10 +8,13 @@ wget \
 ca-certificates \
 jq \
 libapache2-mod-rpaf \
+syslog-ng \
 && a2enmod remoteip \
 && rm -rf /var/lib/apt/lists/*
 
-RUN mv /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
+RUN mv /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini && \
+echo "* * * * * /usr/local/bin/php /var/www/html/glpi/front/cron.php &>/dev/null" >> "${FOLDER_WEB}/glpicron" && \
+crontab -u www-data "${FOLDER_WEB}/glpicron"
 
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
